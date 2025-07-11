@@ -60,6 +60,7 @@ Sie können die Installation anpassen, indem Sie die Datei `config.sh` bearbeite
 - git
 - htop
 - neofetch
+- btop
 - p7zip-full
 
 ### Flatpak-Anwendungen
