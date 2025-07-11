@@ -1,0 +1,6 @@
+[2025-07-11 16:22:51] [INFO] Lumi-Systems Setup Script started
+[2025-07-11 16:22:51] [INFO] Checking internet connection...
+[2025-07-11 16:22:53] [INFO] Internet connection is available
+[2025-07-11 16:22:53] [INFO] Checking root privileges...
+[2025-07-11 16:22:53] [ERROR] Script must be run with root privileges
+[2025-07-11 16:22:53] [ERROR] Root privileges are required. Please run with sudo. Exiting.
