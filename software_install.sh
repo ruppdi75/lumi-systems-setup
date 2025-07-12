@@ -9,7 +9,7 @@ add_edge_repository() {
     
     # Download and install the Microsoft signing key
     if wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg; then
-        if mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg; then
+        if mv microsoft.gpg /usr/share/keyrings/microsoft-edge-archive-keyring.gpg; then
             log_message "INFO" "Microsoft signing key installed"
         else
             log_message "ERROR" "Failed to install Microsoft signing key"
@@ -20,8 +20,8 @@ add_edge_repository() {
         return 1
     fi
     
-    # Add the Edge repository
-    if echo "deb [arch=amd64] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge.list; then
+    # Add the Edge repository with signed-by option
+    if echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge-archive-keyring.gpg] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge.list; then
         log_message "INFO" "Microsoft Edge repository added"
         return 0
     else
@@ -30,88 +30,360 @@ add_edge_repository() {
     fi
 }
 
-# Function to add OnlyOffice repository
-add_onlyoffice_repository() {
-    log_message "INFO" "Adding OnlyOffice repository"
-    
-    # Download and install the OnlyOffice signing key
-    if wget -qO- https://download.onlyoffice.com/repo/onlyoffice.key | gpg --dearmor > onlyoffice.gpg; then
-        if mv onlyoffice.gpg /etc/apt/trusted.gpg.d/onlyoffice.gpg; then
-            log_message "INFO" "OnlyOffice signing key installed"
-        else
-            log_message "ERROR" "Failed to install OnlyOffice signing key"
-            return 1
-        fi
-    else
-        log_message "ERROR" "Failed to download OnlyOffice signing key"
-        return 1
-    fi
-    
-    # Add the OnlyOffice repository
-    if echo "deb https://download.onlyoffice.com/repo/debian squeeze main" > /etc/apt/sources.list.d/onlyoffice.list; then
-        log_message "INFO" "OnlyOffice repository added"
-        return 0
-    else
-        log_message "ERROR" "Failed to add OnlyOffice repository"
-        return 1
-    fi
-}
-
+# OnlyOffice will be installed via Flatpak instead of APT
+# No repository setup needed
 # Function to install RustDesk
 install_rustdesk() {
-    show_progress "rustdesk" "Installing RustDesk $RUSTDESK_VERSION"
+    # Check if a specific version is requested or use 'latest'
+    local version_to_install=${RUSTDESK_VERSION:-"latest"}
+    local installation_method=${RUSTDESK_INSTALL_METHOD:-"deb"}
     
-    log_message "INFO" "Installing RustDesk version $RUSTDESK_VERSION"
+    if [ "$version_to_install" = "latest" ]; then
+        show_progress "rustdesk" "Finding latest RustDesk version"
+        log_message "INFO" "Finding latest RustDesk version"
+    else
+        show_progress "rustdesk" "Installing RustDesk $version_to_install"
+        log_message "INFO" "Installing RustDesk version $version_to_install"
+    fi
+    
+    log_message "INFO" "Installation method: $installation_method"
     
     # Create temporary directory
     local temp_dir=$(mktemp -d)
     log_message "INFO" "Created temporary directory: $temp_dir"
     
-    # Download RustDesk - try multiple URL formats and fallback options
+    # Get system architecture
     local architecture=$(dpkg --print-architecture)
     local download_success=false
+    local download_url=""
+    local actual_version=""
     
-    # Try different URL patterns
-    local url_patterns=(
-        "https://github.com/rustdesk/rustdesk/releases/download/$RUSTDESK_VERSION/rustdesk-$RUSTDESK_VERSION-$architecture.deb"
-        "https://github.com/rustdesk/rustdesk/releases/download/$RUSTDESK_VERSION/rustdesk-$RUSTDESK_VERSION.deb"
-        "https://github.com/rustdesk/rustdesk/releases/download/$RUSTDESK_VERSION/rustdesk_$RUSTDESK_VERSION-1_$architecture.deb"
-        "https://github.com/rustdesk/rustdesk/releases/download/$RUSTDESK_VERSION/rustdesk_$RUSTDESK_VERSION-1.deb"
-    )
+    # If latest version is requested, get it from GitHub API
+    if [ "$version_to_install" = "latest" ]; then
+        log_message "INFO" "Fetching latest RustDesk release information from GitHub"
+        
+        # Download the latest release info
+        if ! curl -s -L "https://api.github.com/repos/rustdesk/rustdesk/releases/latest" -o "$temp_dir/release.json"; then
+            log_message "ERROR" "Failed to fetch release information from GitHub"
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        
+        # Extract the latest version tag
+        if command -v jq &>/dev/null; then
+            # Use jq if available
+            actual_version=$(jq -r .tag_name "$temp_dir/release.json" | sed 's/^v//')
+        else
+            # Fallback to grep and sed if jq is not available
+            actual_version=$(grep -o '"tag_name":"[^"]*"' "$temp_dir/release.json" | head -1 | sed 's/"tag_name":"\(.*\)"/\1/' | sed 's/^v//')
+        fi
+        
+        if [ -z "$actual_version" ]; then
+            log_message "ERROR" "Failed to extract latest version from GitHub API response"
+            rm -rf "$temp_dir"
+            return 1
+        fi
+        
+        log_message "INFO" "Latest RustDesk version: $actual_version"
+    else
+        actual_version="$version_to_install"
+    fi
     
-    for url in "${url_patterns[@]}"; do
-        log_message "INFO" "Trying to download RustDesk from: $url"
-        if wget --spider -q "$url" 2>/dev/null; then
-            log_message "INFO" "Found valid download URL: $url"
-            if wget -q "$url" -O "$temp_dir/rustdesk.deb"; then
-                log_message "INFO" "RustDesk downloaded successfully from $url"
-                download_success=true
-                break
-            else
-                log_message "WARNING" "Download started but failed for: $url"
+    # Find the correct download URL for the deb package
+    if [ "$version_to_install" = "latest" ]; then
+        # Try to find the correct asset URL from the release info
+        log_message "INFO" "System architecture: $architecture"
+        
+        # Define architecture patterns to look for
+        local arch_patterns=()
+        if [ "$architecture" = "amd64" ]; then
+            arch_patterns=("x86_64" "amd64" "x64")
+        elif [ "$architecture" = "arm64" ]; then
+            arch_patterns=("arm64" "aarch64")
+        else
+            arch_patterns=("$architecture")
+        fi
+        
+        log_message "INFO" "Looking for packages matching architectures: ${arch_patterns[*]}"
+        
+        if command -v jq &>/dev/null; then
+            # Use jq for better parsing if available
+            # First try to find exact architecture match
+            for arch in "${arch_patterns[@]}"; do
+                if [ -z "$download_url" ]; then
+                    download_url=$(jq -r ".assets[] | select(.name | test(\"${arch}.deb$\")) | .browser_download_url" "$temp_dir/release.json" | head -1)
+                    if [ -n "$download_url" ]; then
+                        log_message "INFO" "Found package for architecture $arch: $download_url"
+                    fi
+                fi
+            done
+            
+            # If still not found, look for any .deb file that might be architecture-independent
+            if [ -z "$download_url" ]; then
+                download_url=$(jq -r ".assets[] | select(.name | test(\".deb$\")) | .browser_download_url" "$temp_dir/release.json" | head -1)
+                if [ -n "$download_url" ]; then
+                    log_message "INFO" "Found generic .deb package: $download_url"
+                fi
             fi
         else
-            log_message "WARNING" "URL not accessible: $url"
-        fi
-    done
-    
-    # If all direct downloads fail, try using apt if a repository is available
-    if [ "$download_success" = false ]; then
-        log_message "WARNING" "Direct download failed, trying alternative installation methods"
-        
-        # Try to add RustDesk repository and install via apt
-        if command -v add-apt-repository &>/dev/null; then
-            log_message "INFO" "Attempting to install RustDesk via package manager"
+            # Fallback method if jq is not available
+            for arch in "${arch_patterns[@]}"; do
+                if [ -z "$download_url" ]; then
+                    download_url=$(grep -o '"browser_download_url":"[^"]*'"$arch"'.deb"' "$temp_dir/release.json" | head -1 | sed 's/"browser_download_url":"\(.*\)"/\1/')
+                    if [ -n "$download_url" ]; then
+                        log_message "INFO" "Found package for architecture $arch: $download_url"
+                    fi
+                fi
+            done
             
-            # Try installing from official repositories first
-            if apt-get install -y rustdesk; then
-                log_message "INFO" "RustDesk installed successfully from repositories"
+            # If still not found, look for any .deb file
+            if [ -z "$download_url" ]; then
+                download_url=$(grep -o '"browser_download_url":"[^"]*\.deb"' "$temp_dir/release.json" | head -1 | sed 's/"browser_download_url":"\(.*\)"/\1/')
+                if [ -n "$download_url" ]; then
+                    log_message "INFO" "Found generic .deb package: $download_url"
+                fi
+            fi
+        fi
+    else
+        # Try different URL patterns for a specific version
+        local url_patterns=(
+            "https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk-$actual_version-$architecture.deb"
+            "https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk-$actual_version.deb"
+            "https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk_$actual_version-1_$architecture.deb"
+            "https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk_$actual_version-1.deb"
+            "https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk-$actual_version-x86_64.deb"
+        )
+        
+        for url in "${url_patterns[@]}"; do
+            log_message "INFO" "Checking URL: $url"
+            if wget --spider -q "$url" 2>/dev/null; then
+                download_url="$url"
+                log_message "INFO" "Found valid download URL: $download_url"
+                break
+            fi
+        done
+    fi
+    
+    # Download the package if URL was found
+    if [ -n "$download_url" ]; then
+        log_message "INFO" "Downloading RustDesk from: $download_url"
+        if wget -q "$download_url" -O "$temp_dir/rustdesk.deb"; then
+            log_message "INFO" "RustDesk downloaded successfully"
+            download_success=true
+        else
+            log_message "ERROR" "Failed to download RustDesk from: $download_url"
+        fi
+    else
+        log_message "ERROR" "Could not find a valid download URL for RustDesk $actual_version"
+    fi
+    
+    # If using Flatpak installation method or if DEB download fails, try Flatpak
+    if [ "$installation_method" = "flatpak" ] || [ "$download_success" = false ]; then
+        if [ "$installation_method" = "flatpak" ]; then
+            log_message "INFO" "Using Flatpak installation method for RustDesk"
+        else
+            log_message "WARNING" "DEB download failed, trying Flatpak installation method"
+        fi
+        
+        # Check if Flatpak is installed
+        if ! command -v flatpak &>/dev/null; then
+            log_message "INFO" "Flatpak not installed, installing it now"
+            if ! setup_flatpak; then
+                log_message "ERROR" "Failed to install Flatpak, cannot continue with Flatpak installation"
+                if [ "$installation_method" = "flatpak" ]; then
+                    rm -rf "$temp_dir"
+                    return 1
+                fi
+            fi
+        fi
+        
+        # If Flatpak is now available, try to install RustDesk
+        if command -v flatpak &>/dev/null; then
+            # First try installing from Flathub (most reliable method)
+            log_message "INFO" "Attempting to install RustDesk from Flathub"
+            if flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
+                if flatpak install -y flathub com.rustdesk.RustDesk; then
+                    log_message "INFO" "RustDesk installed successfully from Flathub"
+                    SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
+                    rm -rf "$temp_dir"
+                    return 0
+                else
+                    log_message "WARNING" "RustDesk not available on Flathub or installation failed, trying direct download"
+                fi
+            else
+                log_message "WARNING" "Failed to add Flathub repository, trying direct download"
+            fi
+            
+            # If Flathub fails, try direct download from GitHub
+            local flatpak_url=""
+            
+            # Try to find Flatpak URL if using latest version
+            if [ "$version_to_install" = "latest" ] && [ -f "$temp_dir/release.json" ]; then
+                # Get system architecture
+                local arch=$(dpkg --print-architecture)
+                local arch_patterns=()
+                
+                # Map system architecture to possible Flatpak architecture patterns
+                if [ "$arch" = "amd64" ]; then
+                    arch_patterns=("x86_64" "amd64" "x64")
+                elif [ "$arch" = "arm64" ]; then
+                    arch_patterns=("arm64" "aarch64")
+                else
+                    arch_patterns=("$arch")
+                fi
+                
+                log_message "INFO" "Looking for Flatpak packages matching architectures: ${arch_patterns[*]}"
+                
+                # Try to find a matching Flatpak for our architecture
+                if command -v jq &>/dev/null; then
+                    for arch_pattern in "${arch_patterns[@]}"; do
+                        flatpak_url=$(jq -r ".assets[] | select(.name | test(\".flatpak$\")) | select(.name | test(\"$arch_pattern\")) | .browser_download_url" "$temp_dir/release.json" | head -1)
+                        if [ -n "$flatpak_url" ]; then
+                            log_message "INFO" "Found Flatpak for architecture $arch_pattern: $flatpak_url"
+                            break
+                        fi
+                    done
+                    
+                    # If no architecture-specific Flatpak found, try any Flatpak as last resort
+                    if [ -z "$flatpak_url" ]; then
+                        flatpak_url=$(jq -r ".assets[] | select(.name | test(\".flatpak$\")) | .browser_download_url" "$temp_dir/release.json" | head -1)
+                        if [ -n "$flatpak_url" ]; then
+                            log_message "WARNING" "No architecture-specific Flatpak found, using: $flatpak_url"
+                        fi
+                    fi
+                else
+                    # Fallback if jq is not available
+                    for arch_pattern in "${arch_patterns[@]}"; do
+                        flatpak_url=$(grep -o "\"browser_download_url\":\"[^\"]*$arch_pattern[^\"]*\.flatpak\"" "$temp_dir/release.json" | head -1 | sed 's/"browser_download_url":"\(.*\)"/\1/')
+                        if [ -n "$flatpak_url" ]; then
+                            log_message "INFO" "Found Flatpak for architecture $arch_pattern: $flatpak_url"
+                            break
+                        fi
+                    done
+                    
+                    # If no architecture-specific Flatpak found, try any Flatpak as last resort
+                    if [ -z "$flatpak_url" ]; then
+                        flatpak_url=$(grep -o '"browser_download_url":"[^"]*\.flatpak"' "$temp_dir/release.json" | head -1 | sed 's/"browser_download_url":"\(.*\)"/\1/')
+                        if [ -n "$flatpak_url" ]; then
+                            log_message "WARNING" "No architecture-specific Flatpak found, using: $flatpak_url"
+                        fi
+                    fi
+                fi
+            fi
+            
+            # If no Flatpak URL found from API, try standard URL patterns
+            if [ -z "$flatpak_url" ]; then
+                # Get system architecture
+                local arch=$(dpkg --print-architecture)
+                local arch_patterns=()
+                
+                # Map system architecture to possible Flatpak architecture patterns
+                if [ "$arch" = "amd64" ]; then
+                    arch_patterns=("x86_64" "amd64" "x64")
+                elif [ "$arch" = "arm64" ]; then
+                    arch_patterns=("arm64" "aarch64")
+                else
+                    arch_patterns=("$arch")
+                fi
+                
+                log_message "INFO" "Looking for Flatpak packages matching architectures: ${arch_patterns[*]}"
+                
+                local flatpak_patterns=()
+                
+                # Generate URL patterns for each architecture
+                for arch_pattern in "${arch_patterns[@]}"; do
+                    flatpak_patterns+=("https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk-$actual_version-$arch_pattern.flatpak")
+                done
+                
+                # Add generic patterns as fallback
+                flatpak_patterns+=("https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk-$actual_version.flatpak")
+                flatpak_patterns+=("https://github.com/rustdesk/rustdesk/releases/download/$actual_version/rustdesk_$actual_version.flatpak")
+                
+                for url in "${flatpak_patterns[@]}"; do
+                    log_message "INFO" "Checking Flatpak URL: $url"
+                    if wget --spider -q "$url" 2>/dev/null; then
+                        flatpak_url="$url"
+                        log_message "INFO" "Found valid Flatpak URL: $flatpak_url"
+                        break
+                    fi
+                done
+            fi
+            
+            # If we found a Flatpak URL, download and install it
+            if [ -n "$flatpak_url" ]; then
+                log_message "INFO" "Downloading RustDesk Flatpak from: $flatpak_url"
+                if wget -q "$flatpak_url" -O "$temp_dir/rustdesk.flatpak"; then
+                    log_message "INFO" "RustDesk Flatpak downloaded successfully"
+                    
+                    log_message "INFO" "Installing RustDesk via Flatpak"
+                    if flatpak install --user -y "$temp_dir/rustdesk.flatpak"; then
+                        log_message "INFO" "RustDesk installed successfully via Flatpak"
+                        SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
+                        rm -rf "$temp_dir"
+                        return 0
+                    else
+                        log_message "ERROR" "Failed to install RustDesk via Flatpak"
+                    fi
+                else
+                    log_message "ERROR" "Failed to download RustDesk Flatpak"
+                fi
+            else
+                log_message "WARNING" "No valid Flatpak download URL found"
+            fi
+        fi
+    fi
+    
+    # If we're still here and using Flatpak method, try falling back to .deb installation
+    if [ "$installation_method" = "flatpak" ]; then
+        log_message "WARNING" "All Flatpak installation attempts for RustDesk failed, falling back to .deb installation"
+        
+        # If we already have a .deb file downloaded, try to install it
+        if [ -f "$temp_dir/rustdesk.deb" ] && [ "$download_success" = true ]; then
+            log_message "INFO" "Attempting to install RustDesk using downloaded .deb package"
+            
+            # Install RustDesk using the .deb package
+            if dpkg -i "$temp_dir/rustdesk.deb"; then
+                log_message "INFO" "RustDesk installed successfully via .deb package"
                 SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
                 rm -rf "$temp_dir"
                 return 0
             else
-                log_message "WARNING" "RustDesk not available in standard repositories"
+                log_message "WARNING" "Failed to install RustDesk .deb package, trying to fix dependencies"
+                
+                # Try to fix dependencies and retry
+                apt-get -f install -y
+                if dpkg -i "$temp_dir/rustdesk.deb"; then
+                    log_message "INFO" "RustDesk installed successfully after fixing dependencies"
+                    SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
+                    rm -rf "$temp_dir"
+                    return 0
+                else
+                    log_message "ERROR" "Failed to install RustDesk .deb package after fixing dependencies"
+                fi
             fi
+        else 
+            log_message "ERROR" "No valid .deb package available for fallback installation"
+        fi
+        
+        # If we get here, all installation methods failed
+        log_message "ERROR" "All installation attempts for RustDesk failed"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    # If we're still here and using DEB method but download failed, try apt
+    if [ "$download_success" = false ]; then
+        log_message "WARNING" "Direct download failed, trying package manager"
+        
+        # Try to install via apt
+        log_message "INFO" "Attempting to install RustDesk via package manager"
+        if apt-get install -y rustdesk; then
+            log_message "INFO" "RustDesk installed successfully from repositories"
+            SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
+            rm -rf "$temp_dir"
+            return 0
+        else
+            log_message "WARNING" "RustDesk not available in standard repositories"
         fi
         
         # If we get here, all download attempts failed
@@ -159,32 +431,40 @@ install_apt_package() {
         SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
         return 0
     else
-        # Check if it's a virtual package
-        local apt_cache_output=$(apt-cache policy "$package" 2>&1)
-        
-        if echo "$apt_cache_output" | grep -q "is a virtual package"; then
-            log_message "WARNING" "$package is a virtual package. Attempting to find a suitable provider."
+        # Try with --allow-unauthenticated if normal installation fails
+        log_message "WARNING" "Standard installation failed for $package. Trying with --allow-unauthenticated"
+        if apt-get install -y --allow-unauthenticated "$package"; then
+            log_message "INFO" "Package installed successfully with --allow-unauthenticated: $package"
+            SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
+            return 0
+        else
+            # Check if it's a virtual package
+            local apt_cache_output=$(apt-cache policy "$package" 2>&1)
             
-            # Try to extract the first provider
-            local provider=$(echo "$apt_cache_output" | grep -oP '\s+\K[^\s]+(?=\s+[0-9])' | head -1)
-            
-            if [ -n "$provider" ]; then
-                log_message "INFO" "Trying to install $provider as a replacement for $package"
+            if echo "$apt_cache_output" | grep -q "is a virtual package"; then
+                log_message "WARNING" "$package is a virtual package. Attempting to find a suitable provider."
                 
-                if apt-get install -y "$provider"; then
-                    log_message "SUCCESS" "Successfully installed $provider as a replacement for $package"
-                    SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
-                    return 0
+                # Try to extract the first provider
+                local provider=$(echo "$apt_cache_output" | grep -oP '\s+\K[^\s]+(?=\s+[0-9])' | head -1)
+                
+                if [ -n "$provider" ]; then
+                    log_message "INFO" "Trying to install $provider as a replacement for $package"
+                    
+                    if apt-get install -y "$provider" || apt-get install -y --allow-unauthenticated "$provider"; then
+                        log_message "SUCCESS" "Successfully installed $provider as a replacement for $package"
+                        SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
+                        return 0
+                    else
+                        log_message "ERROR" "Failed to install $provider as a replacement for $package"
+                    fi
                 else
-                    log_message "ERROR" "Failed to install $provider as a replacement for $package"
+                    log_message "ERROR" "Could not determine a provider for virtual package $package"
                 fi
-            else
-                log_message "ERROR" "Could not determine a provider for virtual package $package"
             fi
+            
+            log_message "ERROR" "Failed to install package: $package"
+            return 1
         fi
-        
-        log_message "ERROR" "Failed to install package: $package"
-        return 1
     fi
 }
 
@@ -200,7 +480,7 @@ install_apt_gui_apps() {
     
     # Add repositories for special packages
     add_edge_repository
-    add_onlyoffice_repository
+    # OnlyOffice will be installed via Flatpak instead of APT
     
     # Update package lists after adding repositories
     update_package_lists
@@ -208,6 +488,8 @@ install_apt_gui_apps() {
     # Install each GUI application
     for app in "${APT_GUI_APPS[@]}"; do
         show_progress "apt_gui_$app" "Installing $app"
+        
+        # Normal installation for all packages
         if ! install_apt_package "$app"; then
             handle_error "Failed to install $app" "install_apt_package $app"
         fi
@@ -303,8 +585,36 @@ install_flatpak_apps() {
 }
 
 # Main software installation function
+# Function to clean up repository files that might cause issues
+cleanup_repository_files() {
+    log_message "INFO" "Cleaning up problematic repository files"
+    
+    # Remove OnlyOffice repository files
+    if [ -f "/etc/apt/sources.list.d/onlyoffice.list" ]; then
+        log_message "INFO" "Removing OnlyOffice repository file"
+        rm -f /etc/apt/sources.list.d/onlyoffice.list
+    fi
+    
+    if [ -f "/etc/apt/sources.list.d/onlyoffice-fallback.list" ]; then
+        log_message "INFO" "Removing OnlyOffice fallback repository file"
+        rm -f /etc/apt/sources.list.d/onlyoffice-fallback.list
+    fi
+    
+    if [ -f "/usr/share/keyrings/onlyoffice-archive-keyring.gpg" ]; then
+        log_message "INFO" "Removing OnlyOffice keyring file"
+        rm -f /usr/share/keyrings/onlyoffice-archive-keyring.gpg
+    fi
+    
+    # Update package lists after cleanup
+    log_message "INFO" "Updating package lists after repository cleanup"
+    apt-get update -o Acquire::AllowInsecureRepositories=true
+}
+
 install_software() {
     log_message "INFO" "Starting software installation"
+    
+    # Clean up problematic repository files first
+    cleanup_repository_files
     
     # Install RustDesk dependencies first
     install_rustdesk_dependencies

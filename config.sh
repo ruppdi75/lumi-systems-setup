@@ -9,8 +9,11 @@ SYSTEM_LANGUAGE="de_AT.UTF-8"
 SYSTEM_TIMEZONE="Europe/Vienna"
 WEATHER_LOCATION="Vienna"
 
-# RustDesk version
-RUSTDESK_VERSION="1.4.0"
+# RustDesk configuration
+# Version: set to "latest" to automatically use the latest available version
+RUSTDESK_VERSION="latest"
+# Installation method: "deb" or "flatpak"
+RUSTDESK_INSTALL_METHOD="flatpak"
 
 # Software lists
 # APT GUI applications

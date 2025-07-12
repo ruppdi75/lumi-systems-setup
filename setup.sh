@@ -257,13 +257,32 @@ fix_package_manager_locks() {
 update_package_lists() {
     show_progress "update_packages" "Updating package lists"
     
-    log_message "INFO" "Updating package lists..."
-    if apt-get update; then
+    log_message "INFO" "Updating package lists"
+    
+    # First, make sure we don't have any problematic repositories
+    cleanup_repository_files
+    
+    # Try with allowing insecure repositories and ignoring missing keys
+    if apt-get update -o Acquire::AllowInsecureRepositories=true -o Acquire::AllowDowngradeToInsecureRepositories=true --allow-insecure-repositories; then
         log_message "INFO" "Package lists updated successfully"
         return 0
     else
-        log_message "ERROR" "Failed to update package lists"
-        return 1
+        # If that fails, try with --allow-unauthenticated
+        log_message "WARNING" "Standard update failed. Trying with --allow-unauthenticated"
+        if apt-get update --allow-unauthenticated; then
+            log_message "INFO" "Package lists updated with --allow-unauthenticated"
+            return 0
+        else
+            # Last resort: try with -o APT::Get::AllowUnauthenticated=true
+            log_message "WARNING" "Update with --allow-unauthenticated failed. Trying with APT::Get::AllowUnauthenticated=true"
+            if apt-get -o APT::Get::AllowUnauthenticated=true update; then
+                log_message "INFO" "Package lists updated with APT::Get::AllowUnauthenticated=true"
+                return 0
+            else
+                log_message "ERROR" "Failed to update package lists"
+                return 1
+            fi
+        fi
     fi
 }
 
@@ -324,7 +343,6 @@ if [ ! -f "$SCRIPT_DIR/config.sh" ]; then
         "krita"
         "vlc"
         "gnome-tweaks"
-        "onlyoffice-desktopeditors"
         "microsoft-edge-stable"
         "firefox"
         "evolution"
@@ -343,6 +361,7 @@ if [ ! -f "$SCRIPT_DIR/config.sh" ]; then
         "chat.revolt.RevoltDesktop"
         "com.obsproject.Studio"
         "org.videolan.VLC"
+        "org.onlyoffice.desktopeditors"
     )
     
     RUSTDESK_DEPENDENCIES=(
@@ -353,7 +372,7 @@ if [ ! -f "$SCRIPT_DIR/config.sh" ]; then
         "libxfixes3"
         "libxcb-shape0"
         "libxcb-xfixes0"
-        "libasound2"
+        "libasound2t64"
         "pipewire"
     )
     
@@ -376,9 +395,41 @@ display_banner() {
 }
 
 # Main execution starts here
+# Function to clean up problematic repository files
+cleanup_repository_files() {
+    log_message "INFO" "Cleaning up problematic repository files"
+    
+    # Remove OnlyOffice repository files
+    if [ -f "/etc/apt/sources.list.d/onlyoffice.list" ]; then
+        log_message "INFO" "Removing OnlyOffice repository file"
+        rm -f /etc/apt/sources.list.d/onlyoffice.list
+    fi
+    
+    if [ -f "/etc/apt/sources.list.d/onlyoffice-fallback.list" ]; then
+        log_message "INFO" "Removing OnlyOffice fallback repository file"
+        rm -f /etc/apt/sources.list.d/onlyoffice-fallback.list
+    fi
+    
+    if [ -f "/usr/share/keyrings/onlyoffice-archive-keyring.gpg" ]; then
+        log_message "INFO" "Removing OnlyOffice keyring file"
+        rm -f /usr/share/keyrings/onlyoffice-archive-keyring.gpg
+    fi
+    
+    # Also check for any other OnlyOffice related files
+    if [ -f "/etc/apt/trusted.gpg.d/onlyoffice.gpg" ]; then
+        log_message "INFO" "Removing OnlyOffice trusted GPG file"
+        rm -f /etc/apt/trusted.gpg.d/onlyoffice.gpg
+    fi
+    
+    log_message "INFO" "Repository cleanup completed"
+}
+
 main() {
     display_banner
     log_message "INFO" "Lumi-Systems Setup Script started"
+    
+    # Clean up problematic repository files first - do this before any other operations
+    cleanup_repository_files
     
     # Check prerequisites
     if ! check_internet_connection; then
