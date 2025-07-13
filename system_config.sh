@@ -55,9 +55,22 @@ configure_system_timezone() {
 # Function to configure weather location
 configure_weather_location() {
     show_progress "weather_location" "Setting weather location to $WEATHER_LOCATION"
-    
     log_message "INFO" "Configuring weather location to $WEATHER_LOCATION"
-    
+
+    # Define GVariant for Vienna (expandable for more cities)
+    local city="$WEATHER_LOCATION"
+    local gvariant_value=""
+    case "$city" in
+        "Vienna"|"Wien")
+            gvariant_value="[<(uint32 2, <('Vienna', '', false, [(48.2082, 16.3738)], [(48.2082, 16.3738)])>)>]"
+            ;;
+        # Add more cities here as needed
+        *)
+            log_message "ERROR" "Unknown city for weather location: $city. Please add GVariant format."
+            return 1
+            ;;
+    esac
+
     # Check if gsettings is available
     if command -v gsettings &> /dev/null; then
         # Get current user
@@ -66,14 +79,13 @@ configure_weather_location() {
         else
             CURRENT_USER="$(whoami)"
         fi
-        
-        # Set weather location for the current user
-        if su - "$CURRENT_USER" -c "gsettings set org.gnome.Weather locations \"[<(uint32 2, <('$WEATHER_LOCATION', '', false, [(0.83975781321986481, 0.28539839653791525)], [(0.83719456862904465, 0.28764822453133844)])>)>]\""; then
-            log_message "INFO" "Weather location set to $WEATHER_LOCATION"
+
+        if su - "$CURRENT_USER" -c "gsettings set org.gnome.Weather locations '$gvariant_value'"; then
+            log_message "INFO" "Weather location set to $city (GVariant)"
             SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
             return 0
         else
-            log_message "ERROR" "Failed to set weather location to $WEATHER_LOCATION"
+            log_message "ERROR" "Failed to set weather location to $city (GVariant). Check if GNOME Weather is installed and the schema is correct."
             return 1
         fi
     else
