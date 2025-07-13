@@ -23,7 +23,7 @@ APT_GUI_APPS=(
     "krita"
     "vlc"
     "gnome-tweaks"
-    "onlyoffice-desktopeditors"
+
     "microsoft-edge-stable"
     "firefox"
     "evolution"
@@ -42,6 +42,7 @@ APT_CLI_TOOLS=(
 
 # Flatpak applications
 FLATPAK_APPS=(
+    "org.onlyoffice.desktopeditors"
     "chat.revolt.RevoltDesktop"
     "com.obsproject.Studio"
     "org.videolan.VLC"
