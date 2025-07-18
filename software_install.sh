@@ -575,6 +575,11 @@ install_flatpak_apps() {
         if flatpak install -y flathub "$app"; then
             log_message "INFO" "Flatpak application installed successfully: $app"
             SUCCESSFUL_INSTALLS=$((SUCCESSFUL_INSTALLS + 1))
+            # Optionally launch Thunderbird after install
+            if [ "$app" = "org.mozilla.Thunderbird" ] && [ "${LAUNCH_THUNDERBIRD:-false}" = true ]; then
+                log_message "INFO" "Launching Thunderbird via Flatpak as requested."
+                flatpak run org.mozilla.Thunderbird &
+            fi
         else
             log_message "ERROR" "Failed to install Flatpak application: $app"
             FAILED_INSTALLS=$((FAILED_INSTALLS + 1))

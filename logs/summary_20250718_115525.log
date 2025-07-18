@@ -1,0 +1,98 @@
+=================================================
+Lumi-Systems Setup Summary (QA Report)
+=================================================
+Date: Fr 18 Jul 2025 12:08:01 CEST
+Hostname: lumi-LIFEBOOK-E558
+Kernel: 6.14.0-24-generic
+Ubuntu Version: AnduinOS 1.3.3
+Architecture: amd64
+=================================================
+
+Installation Statistics:
+- Total Steps: 36
+- Steps Completed: 40
+- Successful Installations: 34
+- Failed Installations: 0
+- Installation Duration: 12 minutes
+=================================================
+
+System Configuration:
+- Language: de_AT.UTF-8
+- Timezone: Europe/Vienna
+- Weather Location: Vienna
+=================================================
+
+Installed Software:
+Successful Installations:
+- [install_apt_package:430] [root] [] Package installed successfully: libfuse2
+- [install_apt_package:430] [root] [] Package installed successfully: libpulse0
+- [install_apt_package:430] [root] [] Package installed successfully: libxcb-randr0
+- [install_apt_package:430] [root] [] Package installed successfully: libxdo3
+- [install_apt_package:430] [root] [] Package installed successfully: libxfixes3
+- [install_apt_package:430] [root] [] Package installed successfully: libxcb-shape0
+- [install_apt_package:430] [root] [] Package installed successfully: libxcb-xfixes0
+- [install_apt_package:430] [root] [] Package installed successfully: libasound2t64
+- [install_apt_package:430] [root] [] Package installed successfully: pipewire
+- [install_rustdesk:206] [root] [] RustDesk installed successfully from Flathub
+- [install_apt_package:430] [root] [] Package installed successfully: gimp
+- [install_apt_package:430] [root] [] Package installed successfully: inkscape
+- [install_apt_package:430] [root] [] Package installed successfully: krita
+- [install_apt_package:430] [root] [] Package installed successfully: vlc
+- [install_apt_package:430] [root] [] Package installed successfully: gnome-tweaks
+- [install_apt_package:430] [root] [] Package installed successfully: microsoft-edge-stable
+- [install_apt_package:430] [root] [] Package installed successfully: firefox
+- [install_apt_package:430] [root] [] Package installed successfully: evolution
+- [install_apt_package:430] [root] [] Package installed successfully: wget
+- [install_apt_package:430] [root] [] Package installed successfully: curl
+- [install_apt_package:430] [root] [] Package installed successfully: git
+- [install_apt_package:430] [root] [] Package installed successfully: htop
+- [install_apt_package:430] [root] [] Package installed successfully: neofetch
+- [install_apt_package:430] [root] [] Package installed successfully: btop
+- [install_apt_package:430] [root] [] Package installed successfully: p7zip-full
+- [setup_flatpak:542] [root] [] Flatpak and GNOME Software plugin installed successfully
+- [install_flatpak_apps:576] [root] [] Flatpak application installed successfully: org.onlyoffice.desktopeditors
+- [install_flatpak_apps:576] [root] [] Flatpak application installed successfully: chat.revolt.RevoltDesktop
+- [install_flatpak_apps:576] [root] [] Flatpak application installed successfully: com.obsproject.Studio
+
+Software Versions:
+- vlc: 3.0.21-9build1
+- firefox: 140.0.4+build1-0ubuntu0.25.04.1~mt1
+- btop: 1.3.0-1
+- neofetch: 7.1.0-4ubuntu1
+
+Flatpak Applications:
+- chat.revolt.RevoltDesktop	1.0.8
+- com.obsproject.Studio	31.0.4
+- com.rustdesk.RustDesk	1.4.0
+- org.freedesktop.Platform	freedesktop-sdk-24.08.22
+- org.freedesktop.Platform.GL.default	25.0.7
+- org.freedesktop.Platform.GL.default	25.0.7
+- org.freedesktop.Platform.GL.default	25.1.3
+- org.freedesktop.Platform.GL.default	25.1.3
+- org.freedesktop.Platform.VAAPI.Intel
+- org.freedesktop.Platform.VAAPI.Intel
+- org.freedesktop.Platform.openh264	2.1.0
+- org.freedesktop.Platform.openh264	2.5.1
+- org.kde.KStyle.Adwaita
+- org.kde.Platform
+- org.onlyoffice.desktopeditors	9.0.3
+
+Failed Installations:
+
+Warnings:
+- [fix_package_manager_locks:227] [root] [] Found dpkg lock file. Attempting to remove.
+- [fix_package_manager_locks:233] [root] [] Found apt lists lock file. Attempting to remove.
+- [fix_package_manager_locks:239] [root] [] Found apt archives lock file. Attempting to remove.
+- [fix_package_manager_locks:245] [root] [] PackageKit is running. Attempting to stop it.
+- [configure_weather_location:150] [root] [] Automatic weather location configuration failed. User may need to set it manually.
+
+Retry Attempts:
+
+System Resources:
+- CPU Usage: %
+- Memory Usage: 
+- Disk Usage: 4%
+=================================================
+Detailed Log: /home/lumi/Windsurf_AI/lumi-systems-setup/logs/setup_20250718_115525.log
+Latest Summary: /home/lumi/Windsurf_AI/lumi-systems-setup/logs/latest_summary.log
+=================================================

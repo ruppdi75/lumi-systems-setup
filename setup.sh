@@ -50,21 +50,6 @@ SUMMARY_FILE="$LOG_DIR/summary_$TIMESTAMP.log"
 # State file for resuming interrupted installations
 STATE_FILE="$LOG_DIR/setup_state.dat"
 
-# Initialize counters
-SUCCESSFUL_INSTALLS=0
-FAILED_INSTALLS=0
-TOTAL_STEPS=0
-CURRENT_STEP=0
-LAST_COMPLETED_STEP=""
-
-# Load state if available
-if [ -f "$STATE_FILE" ]; then
-    source "$STATE_FILE"
-    log_message "INFO" "Resuming from previous state. Last completed step: $LAST_COMPLETED_STEP"
-    echo -e "\e[1;33mResuming installation from previous state. Last completed step: $LAST_COMPLETED_STEP\e[0m"
-    echo ""
-fi
-
 # Function to log messages
 log_message() {
     local level="$1"
@@ -119,6 +104,21 @@ log_message() {
         echo "[$timestamp] [INFO] Log file rotated to $rotated_log due to size" >> "$LOG_FILE"
     fi
 }
+
+# Initialize counters
+SUCCESSFUL_INSTALLS=0
+FAILED_INSTALLS=0
+TOTAL_STEPS=0
+CURRENT_STEP=0
+LAST_COMPLETED_STEP=""
+
+# Load state if available
+if [ -f "$STATE_FILE" ]; then
+    source "$STATE_FILE"
+    log_message "INFO" "Resuming from previous state. Last completed step: $LAST_COMPLETED_STEP"
+    echo -e "\e[1;33mResuming installation from previous state. Last completed step: $LAST_COMPLETED_STEP\e[0m"
+    echo ""
+fi
 
 # Function to display progress
 show_progress() {
@@ -362,6 +362,7 @@ if [ ! -f "$SCRIPT_DIR/config.sh" ]; then
         "com.obsproject.Studio"
         "org.videolan.VLC"
         "org.onlyoffice.desktopeditors"
+        "org.mozilla.Thunderbird"
     )
     
     RUSTDESK_DEPENDENCIES=(
