@@ -1,0 +1,8 @@
+# Log files
+logs/
+*.log
+
+# Other temporary files
+*.tmp
+*.bak
+setup_state.dat
